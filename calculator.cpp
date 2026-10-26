@@ -3,9 +3,7 @@
 
 #include <QPushButton>
 
-// ===== V3：实现加减乘除四则运算与计算状态管理 =====
-// 用 m_firstOperand / m_operator / m_waitingForSecond 三个状态
-// 管理第一个操作数、运算符与第二个操作数的输入过程。
+// ===== V4：添加小数输入，处理连续操作符、重复小数点、除零等异常输入 =====
 
 Calculator::Calculator(QWidget *parent)
     : QWidget(parent)
@@ -52,11 +50,15 @@ void Calculator::connectButtons()
             });
         }
     }
+    connect(ui->btnDot,     &QPushButton::clicked, this, [this] { inputDot(); });
     connect(ui->btnEquals,  &QPushButton::clicked, this, [this] { inputEquals(); });
+    connect(ui->btnBackspace, &QPushButton::clicked, this, [this] { doBackspace(); });
+    connect(ui->btnClear,   &QPushButton::clicked, this, [this] { doClear(); });
 }
 
 void Calculator::inputDigit(const QString &digit)
 {
+    if (m_error) return;
     QString text = currentText();
     if (m_waitingForSecond) {
         text = digit;
@@ -71,36 +73,62 @@ void Calculator::inputDigit(const QString &digit)
 
 void Calculator::inputOperator(const QString &op)
 {
+    if (m_error) return;
+    if (m_waitingForSecond) {
+        // 连续操作符（如 1 + + 2）：用新运算符覆盖旧运算符
+        m_operator = op;
+        return;
+    }
     if (m_operator.isEmpty()) {
-        // 首次选择运算符：保存当前显示为第一个操作数
         m_firstOperand = displayValue();
     } else {
-        // 已存在运算符：先完成前一次运算，实现连续运算（如 1+2+3）
         bool ok = false;
-        m_firstOperand = calculate(m_firstOperand, displayValue(), m_operator, &ok);
-        setDisplayValue(m_firstOperand);
+        double result = calculate(m_firstOperand, displayValue(), m_operator, &ok);
+        if (!ok) {
+            enterErrorState(QStringLiteral("错误：除数不能为 0"));
+            return;
+        }
+        m_firstOperand = result;
+        setDisplayValue(result);
     }
     m_operator = op;
     m_waitingForSecond = true;
 }
 
+void Calculator::inputDot()
+{
+    if (m_error) return;
+    if (m_waitingForSecond) {
+        updateDisplay(QStringLiteral("0."));
+        m_waitingForSecond = false;
+        return;
+    }
+    QString text = currentText();
+    // 关键：同一操作数只允许一个小数点，重复输入直接忽略
+    if (text.contains(QLatin1Char('.')))
+        return;
+    updateDisplay(text + QLatin1Char('.'));
+}
+
 void Calculator::inputEquals()
 {
-    if (m_operator.isEmpty())
-        return;
+    if (m_error) return;
+    if (m_operator.isEmpty()) return;
     bool ok = false;
     double result = calculate(m_firstOperand, displayValue(), m_operator, &ok);
+    if (!ok) {
+        enterErrorState(QStringLiteral("错误：除数不能为 0"));
+        return;
+    }
     setDisplayValue(result);
     m_operator.clear();
     m_waitingForSecond = false;
 }
 
-void Calculator::inputDot() {}
-
 void Calculator::doBackspace()
 {
+    if (m_error || m_waitingForSecond) return;
     QString text = currentText();
-    if (m_waitingForSecond) return;
     text.chop(1);
     updateDisplay(text.isEmpty() ? QStringLiteral("0") : text);
 }
@@ -110,6 +138,7 @@ void Calculator::doClear()
     m_firstOperand = 0.0;
     m_operator.clear();
     m_waitingForSecond = false;
+    m_error = false;
     updateDisplay(QStringLiteral("0"));
 }
 
@@ -125,7 +154,13 @@ double Calculator::calculate(double a, double b, const QString &op, bool *ok) co
     if (op == QStringLiteral("+")) return a + b;
     if (op == QStringLiteral("-")) return a - b;
     if (op == QStringLiteral("*")) return a * b;
-    if (op == QStringLiteral("/")) return a / b;
+    if (op == QStringLiteral("/")) {
+        if (b == 0.0) {          // 除零保护
+            *ok = false;
+            return 0.0;
+        }
+        return a / b;
+    }
     *ok = false;
     return 0.0;
 }
@@ -133,4 +168,10 @@ QString Calculator::formatNumber(double value) const
 {
     return QString::number(value, 'g', 12);
 }
-void Calculator::enterErrorState(const QString &msg) { Q_UNUSED(msg); }
+void Calculator::enterErrorState(const QString &msg)
+{
+    m_error = true;
+    m_operator.clear();
+    m_waitingForSecond = false;
+    updateDisplay(msg);
+}
