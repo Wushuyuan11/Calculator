@@ -1,0 +1,14 @@
+build/
+release/
+debug/
+*.exe
+*.o
+*.obj
+*.dll
+Makefile
+Makefile.Release
+Makefile.Debug
+.qmake.stash
+ui_calculator.h
+moc_*.cpp
+*.user
