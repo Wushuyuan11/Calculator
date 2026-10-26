@@ -1,9 +1,12 @@
 #include "calculator.h"
 #include "ui_calculator.h"
 
+#include <QKeyEvent>
 #include <QPushButton>
 
-// ===== V4：添加小数输入，处理连续操作符、重复小数点、除零等异常输入 =====
+// ===== V5：实现键盘事件，鼠标与键盘复用同一套输入处理逻辑 =====
+// keyPressEvent 把物理按键映射到 inputDigit / inputOperator / inputDot /
+// inputEquals / doBackspace / doClear，与按钮点击走完全相同的代码路径。
 
 Calculator::Calculator(QWidget *parent)
     : QWidget(parent)
@@ -23,7 +26,50 @@ void Calculator::applyStyleSheet() {}
 
 void Calculator::keyPressEvent(QKeyEvent *event)
 {
-    QWidget::keyPressEvent(event);
+    switch (event->key()) {
+    case Qt::Key_0: case Qt::Key_1: case Qt::Key_2:
+    case Qt::Key_3: case Qt::Key_4: case Qt::Key_5:
+    case Qt::Key_6: case Qt::Key_7: case Qt::Key_8:
+    case Qt::Key_9:
+        inputDigit(QString::number(event->key() - Qt::Key_0));
+        break;
+    case Qt::Key_Period:
+        inputDot();
+        break;
+    case Qt::Key_Plus:
+        inputOperator(QStringLiteral("+"));
+        break;
+    case Qt::Key_Minus:
+        inputOperator(QStringLiteral("-"));
+        break;
+    case Qt::Key_Asterisk:
+    case Qt::Key_multiply:
+        inputOperator(QStringLiteral("*"));
+        break;
+    case Qt::Key_Slash:
+        inputOperator(QStringLiteral("/"));
+        break;
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+    case Qt::Key_Equal:
+        inputEquals();
+        break;
+    case Qt::Key_Backspace:
+        doBackspace();
+        break;
+    case Qt::Key_Escape:
+    case Qt::Key_Delete:
+        doClear();
+        break;
+    case Qt::Key_C:
+        if (!event->modifiers().testFlag(Qt::ControlModifier))
+            doClear();
+        break;
+    default:
+        QWidget::keyPressEvent(event);
+        return;
+    }
+    event->accept();
 }
 
 void Calculator::connectButtons()
@@ -75,7 +121,6 @@ void Calculator::inputOperator(const QString &op)
 {
     if (m_error) return;
     if (m_waitingForSecond) {
-        // 连续操作符（如 1 + + 2）：用新运算符覆盖旧运算符
         m_operator = op;
         return;
     }
@@ -104,7 +149,6 @@ void Calculator::inputDot()
         return;
     }
     QString text = currentText();
-    // 关键：同一操作数只允许一个小数点，重复输入直接忽略
     if (text.contains(QLatin1Char('.')))
         return;
     updateDisplay(text + QLatin1Char('.'));
@@ -155,7 +199,7 @@ double Calculator::calculate(double a, double b, const QString &op, bool *ok) co
     if (op == QStringLiteral("-")) return a - b;
     if (op == QStringLiteral("*")) return a * b;
     if (op == QStringLiteral("/")) {
-        if (b == 0.0) {          // 除零保护
+        if (b == 0.0) {
             *ok = false;
             return 0.0;
         }
