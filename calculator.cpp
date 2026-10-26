@@ -1,9 +1,11 @@
 #include "calculator.h"
 #include "ui_calculator.h"
 
-// ===== V1：创建 Qt 工程骨架，通过 UI 设计器完成界面布局 =====
-// 界面（显示框、17 个按钮、QGridLayout 网格布局）全部在 calculator.ui 中完成，
-// 控件属性（只读、右对齐、按钮文本等）也由 UI 设计器设置。
+#include <QPushButton>
+
+// ===== V2：实现数字输入、退格与清除功能 =====
+// 数字按钮统一通过对象名 btn0...btn9 查找并连接到 inputDigit，
+// 避免编写 10 段重复代码。
 
 Calculator::Calculator(QWidget *parent)
     : QWidget(parent)
@@ -11,6 +13,7 @@ Calculator::Calculator(QWidget *parent)
 {
     ui->setupUi(this);
     setWindowTitle("带键盘事件的计算器");
+    connectButtons();
 }
 
 Calculator::~Calculator()
@@ -25,14 +28,41 @@ void Calculator::keyPressEvent(QKeyEvent *event)
     QWidget::keyPressEvent(event);
 }
 
-void Calculator::connectButtons() {}
+void Calculator::connectButtons()
+{
+    for (int i = 0; i <= 9; ++i) {
+        QPushButton *btn = findChild<QPushButton *>(QStringLiteral("btn%1").arg(i));
+        if (btn) {
+            connect(btn, &QPushButton::clicked, this, [this, i] {
+                inputDigit(QString::number(i));
+            });
+        }
+    }
+}
 
-void Calculator::inputDigit(const QString &digit) { Q_UNUSED(digit); }
-void Calculator::inputOperator(const QString &op)  { Q_UNUSED(op); }
+void Calculator::inputDigit(const QString &digit)
+{
+    QString text = currentText();
+    // 显示为 0 时用数字替换，避免出现 "07" 前导零
+    text = (text == QStringLiteral("0")) ? digit : text + digit;
+    updateDisplay(text);
+}
+
+void Calculator::inputOperator(const QString &op) { Q_UNUSED(op); }
 void Calculator::inputDot() {}
 void Calculator::inputEquals() {}
-void Calculator::doBackspace() {}
-void Calculator::doClear() {}
+
+void Calculator::doBackspace()
+{
+    QString text = currentText();
+    text.chop(1);
+    updateDisplay(text.isEmpty() ? QStringLiteral("0") : text);
+}
+
+void Calculator::doClear()
+{
+    updateDisplay(QStringLiteral("0"));
+}
 
 QString Calculator::currentText() const { return ui->displayEdit->text(); }
 void Calculator::updateDisplay(const QString &text) { ui->displayEdit->setText(text); }
