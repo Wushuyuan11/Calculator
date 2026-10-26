@@ -15,6 +15,14 @@ Calculator::Calculator(QWidget *parent)
 
     setWindowTitle("带键盘事件的计算器");
 
+    // 所有按钮和显示框均不抢占键盘焦点，
+    // 保证按键事件总能由本窗口统一接收处理（键盘输入的可靠性保证）
+    setFocusPolicy(Qt::StrongFocus);
+    for (QPushButton *btn : findChildren<QPushButton *>()) {
+        btn->setFocusPolicy(Qt::NoFocus);
+    }
+    ui->displayEdit->setFocusPolicy(Qt::NoFocus);
+
     connectButtons();
 }
 
