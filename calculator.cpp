@@ -3,9 +3,9 @@
 
 #include <QPushButton>
 
-// ===== V2：实现数字输入、退格与清除功能 =====
-// 数字按钮统一通过对象名 btn0...btn9 查找并连接到 inputDigit，
-// 避免编写 10 段重复代码。
+// ===== V3：实现加减乘除四则运算与计算状态管理 =====
+// 用 m_firstOperand / m_operator / m_waitingForSecond 三个状态
+// 管理第一个操作数、运算符与第二个操作数的输入过程。
 
 Calculator::Calculator(QWidget *parent)
     : QWidget(parent)
@@ -38,29 +38,78 @@ void Calculator::connectButtons()
             });
         }
     }
+    const struct { const char *name; QString op; } opMap[] = {
+        {"btnAdd",      QStringLiteral("+")},
+        {"btnSubtract", QStringLiteral("-")},
+        {"btnMultiply", QStringLiteral("*")},
+        {"btnDivide",   QStringLiteral("/")}
+    };
+    for (const auto &e : opMap) {
+        QPushButton *btn = findChild<QPushButton *>(QLatin1String(e.name));
+        if (btn) {
+            connect(btn, &QPushButton::clicked, this, [this, e] {
+                inputOperator(e.op);
+            });
+        }
+    }
+    connect(ui->btnEquals,  &QPushButton::clicked, this, [this] { inputEquals(); });
 }
 
 void Calculator::inputDigit(const QString &digit)
 {
     QString text = currentText();
-    // 显示为 0 时用数字替换，避免出现 "07" 前导零
-    text = (text == QStringLiteral("0")) ? digit : text + digit;
+    if (m_waitingForSecond) {
+        text = digit;
+        m_waitingForSecond = false;
+    } else if (text == QStringLiteral("0")) {
+        text = digit;
+    } else {
+        text += digit;
+    }
     updateDisplay(text);
 }
 
-void Calculator::inputOperator(const QString &op) { Q_UNUSED(op); }
+void Calculator::inputOperator(const QString &op)
+{
+    if (m_operator.isEmpty()) {
+        // 首次选择运算符：保存当前显示为第一个操作数
+        m_firstOperand = displayValue();
+    } else {
+        // 已存在运算符：先完成前一次运算，实现连续运算（如 1+2+3）
+        bool ok = false;
+        m_firstOperand = calculate(m_firstOperand, displayValue(), m_operator, &ok);
+        setDisplayValue(m_firstOperand);
+    }
+    m_operator = op;
+    m_waitingForSecond = true;
+}
+
+void Calculator::inputEquals()
+{
+    if (m_operator.isEmpty())
+        return;
+    bool ok = false;
+    double result = calculate(m_firstOperand, displayValue(), m_operator, &ok);
+    setDisplayValue(result);
+    m_operator.clear();
+    m_waitingForSecond = false;
+}
+
 void Calculator::inputDot() {}
-void Calculator::inputEquals() {}
 
 void Calculator::doBackspace()
 {
     QString text = currentText();
+    if (m_waitingForSecond) return;
     text.chop(1);
     updateDisplay(text.isEmpty() ? QStringLiteral("0") : text);
 }
 
 void Calculator::doClear()
 {
+    m_firstOperand = 0.0;
+    m_operator.clear();
+    m_waitingForSecond = false;
     updateDisplay(QStringLiteral("0"));
 }
 
@@ -69,12 +118,19 @@ void Calculator::updateDisplay(const QString &text) { ui->displayEdit->setText(t
 void Calculator::updateExpression(const QString &expr) { Q_UNUSED(expr); }
 QString Calculator::opSymbol(const QString &op) const { Q_UNUSED(op); return QString(); }
 double Calculator::displayValue() const { return currentText().toDouble(); }
-void Calculator::setDisplayValue(double value) { updateDisplay(QString::number(value)); }
+void Calculator::setDisplayValue(double value) { updateDisplay(formatNumber(value)); }
 double Calculator::calculate(double a, double b, const QString &op, bool *ok) const
 {
-    Q_UNUSED(a); Q_UNUSED(b); Q_UNUSED(op);
+    *ok = true;
+    if (op == QStringLiteral("+")) return a + b;
+    if (op == QStringLiteral("-")) return a - b;
+    if (op == QStringLiteral("*")) return a * b;
+    if (op == QStringLiteral("/")) return a / b;
     *ok = false;
     return 0.0;
 }
-QString Calculator::formatNumber(double value) const { return QString::number(value); }
+QString Calculator::formatNumber(double value) const
+{
+    return QString::number(value, 'g', 12);
+}
 void Calculator::enterErrorState(const QString &msg) { Q_UNUSED(msg); }
